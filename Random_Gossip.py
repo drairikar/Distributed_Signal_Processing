@@ -2,14 +2,16 @@ from preprocessing import *
 import numpy as np
 import matplotlib.pyplot as plt
 import cvxpy as cp
+import time
 
 field_size = 100
 # field_resolution = (field_size, field_size)
 field_range = np.array([[0, field_size], [0, field_size]])
 # num_sensors = 10
-AGENT_COMM_RANGE = 30
+AGENT_COMM_RANGE = 20
             
-num_sensors = number_of_sensors(AGENT_COMM_RANGE, field_size)
+# num_sensors = number_of_sensors(AGENT_COMM_RANGE, field_size)
+num_sensors = 150
 print(f"Number of sensors: {num_sensors}")
 print("probability:", 1-1/num_sensors**2)
 
@@ -58,8 +60,10 @@ def calculate_P_matrix(adjacency_matrix):
     constraints = [
         P_mat >= 0,  # P must be non-negative
         cp.sum(P_mat, axis=1) == 1,  # Each row sums to 1
+        P_mat[adjacency_matrix == 0] == 0  # P_ij = 0 if i and j are not connected
 
     ]
+    
     W_bar_terms = []
     for i in range(num_sensors):
         for j in range(num_sensors):
@@ -73,20 +77,29 @@ def calculate_P_matrix(adjacency_matrix):
                 # print("Eigenbasis: ", e_i, e_j)
                
     W_bar = (1 / num_sensors) * cp.sum(W_bar_terms)  # Average Wij matrix
-     
+         
     # constraints.append(P_mat  == W_bar)  # P must equal the average Wij matrix
     objective_exp = cp.lambda_max(W_bar - (1/num_sensors)*np.ones((num_sensors, num_sensors)))  # Objective to minimize the largest eigenvalue of W_bar
+    
     objective = cp.Minimize(objective_exp)
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.SCS, verbose=False)
     P_matrix = P_mat.value
+    print(f"Optimal P matrix:\n{P_matrix}")
+
+    ##how many non-negative entries in P_matrix
+    num_negative_entries = np.sum(P_matrix < 0)
+    print(f"Number of negative entries in P matrix: {num_negative_entries}")
+
+    P_matrix[P_matrix < 0] = 0  # Ensure non-negativity
+
    
     if P_matrix is None:
         raise ValueError("The optimization problem did not return a valid P matrix.")
     return P_matrix
 
 
-def randomized_gossip(adjacency_matrix, initial_vals, num_iterations = 50000, tole=1e-4):
+def randomized_gossip(adjacency_matrix, initial_vals, num_iterations = 50000, tole=1e-6):
     # num_sensors = adjacency_matrix.shape[0]
     # initial_vals = temperature_measurements[:num_sensors][0]
     
@@ -114,32 +127,41 @@ def randomized_gossip(adjacency_matrix, initial_vals, num_iterations = 50000, to
         return [], 0
 
     actual_transmission_count = 0
+    tx_counts_natural = [actual_transmission_count]
     for it in range(num_iterations):
-        i, j = connected_nodes[np.random.randint(len(connected_nodes))]  # Randomly select a pair of connected nodes
+        # i, j = connected_nodes[np.random.randint(len(connected_nodes))]  # Randomly select a pair of connected nodes
+        
+        i = np.random.choice(n)  # Randomly select a node i
+        neighbors = np.where(adjacency_matrix[i] == 1)[0]
+        if len(neighbors) == 0:
+            print(f"Node {i} has no neighbors. Skipping iteration {it}.")
+            continue
+        j = np.random.choice(neighbors)
 
         # if adjacency_matrix[i, j] == 1:  # Check if i and j are neighbors
         avg_vals = (current_vals[i] + current_vals[j]) / 2
         current_vals[i] = avg_vals
         current_vals[j] = avg_vals
         estimated_vals.append(current_vals.copy())
-        actual_transmission_count += 1
+        actual_transmission_count += 2
+        tx_counts_natural.append(actual_transmission_count)
 
         if np.linalg.norm(current_vals - avg_true_vals) < tole:
             print(f"Convergence reached at iteration {it}.")
-            return estimated_vals, actual_transmission_count  # Return the estimates and the number of iterations
+            return estimated_vals, tx_counts_natural  # Return the estimates and the number of iterations
             # break
 
     # print(f"Maximum iterations reached without convergence.")
     # print("Temp:", temperature_measurements.shape)
     # print(f"Initial values: {initial_vals}")
     # print(f"Final values: {estimated_vals[-1]}")
-        print(f"Estimated average: {np.mean(current_vals)}")
-        print(f"True average: {avg_true_vals}")
-        # print(f"Number of iterations: {num_iterations}")
-        print(f"Actual transmission count: {actual_transmission_count}")
+        # print(f"Estimated average: {np.mean(current_vals)}")
+        # print(f"True average: {avg_true_vals}")
+        # # print(f"Number of iterations: {num_iterations}")
+        # print(f"Actual transmission count: {actual_transmission_count}")
 
 
-    return estimated_vals, actual_transmission_count
+    return estimated_vals, tx_counts_natural
 
 def optimized_randomized_gossip(P_matrix, initial_vals, num_iterations=50000, tole=1e-6):
     n = len(initial_vals)
@@ -148,45 +170,65 @@ def optimized_randomized_gossip(P_matrix, initial_vals, num_iterations=50000, to
     avg_true_vals = np.mean(initial_vals)
 
     actual_transmission_count = 0
+    txcounts_opt = [actual_transmission_count]
+    
 
     for it in range(num_iterations):
-        i, j = np.random.choice(n, size=2, replace=False)  # Randomly select two nodes
-        probability = P_matrix[i, j]  # Get the transition probability from P_matrix
-        prob_sum = np.sum(probability)  # Sum of probabilities for node i
-        if prob_sum > 0:
-            avg_vals = (current_vals[i] + current_vals[j]) / 2
-            current_vals[i] = avg_vals
-            current_vals[j] = avg_vals
-            estimated_vals.append(current_vals.copy())
-            actual_transmission_count += 1
-        else:
-            print(f"Warning: No valid transition probabilities for nodes {i} and {j}. Skipping iteration {it}.")
-            continue
+      
+        i = np.random.randint(n)  # Randomly select a node i
+        neighbors_i = np.where(adjacency_matrix[i] == 1)[0]  # Get neighbors of node i
+
+        if len(neighbors_i) == 0:
+            print(f"Node {i} has no neighbors. Skipping iteration {it}.")
+            continue  # Skip if node i has no neighbors
+
+
+        neighbor_probabilities = P_matrix[i, neighbors_i]  # Get transition probabilities for neighbors of node i
+        prob_sum = np.sum(neighbor_probabilities)  # Sum of probabilities for node i
+
+        # if prob_sum <= 0:
+        #     continue
+
+        norm_prob = neighbor_probabilities /prob_sum
+        j = np.random.choice(neighbors_i, p=norm_prob)  # Randomly select a neighbor j based on probabilities
+
+                # if prob_sum > 0:
+        avg_vals = (current_vals[i] + current_vals[j]) / 2
+        current_vals[i] = avg_vals
+        current_vals[j] = avg_vals
+        estimated_vals.append(current_vals.copy())
+        actual_transmission_count += 2
+        txcounts_opt.append(actual_transmission_count)
+        # else:
+        #     print(f"Warning: No valid transition probabilities for nodes {i} and {j}. Skipping iteration {it}.")
+        #     continue
         if np.linalg.norm(current_vals - avg_true_vals) < tole:
             print(f"Convergence reached at iteration {it}.")
-            return estimated_vals, it + 1
+            return estimated_vals, txcounts_opt,
         
         # print(f"Maximum iterations reached without convergence.")
         # print(f"Initial values: {initial_vals}")
         # print(f"Final values: {estimated_vals[-1]}")
-        print(f"Estimated average: {np.mean(current_vals)}")
-        print(f"True average: {avg_true_vals}")
-        print(f"Number of iterations: {num_iterations}")
-        print(f"Actual transmission count: {actual_transmission_count}")
+        # print(f"Estimated average: {np.mean(current_vals)}")
+        # print(f"True average: {avg_true_vals}")
+        # print(f"Number of iterations: {num_iterations}")
+        # print(f"Actual transmission count: {actual_transmission_count}")
 
-    return estimated_vals, actual_transmission_count
+    return estimated_vals, txcounts_opt
        
 
-def plot_convergence_random_gossip(true_avg, estimates):
-    if not estimates:
-        print("No estimates to plot.")
-        return
+def plot_convergence_random_gossip(estimates_gossip, txcounts_nat, estimates_opt, txcounts_optimized, true_avg):
+    # if not estimates:
+    #     print("No estimates to plot.")
+    #     return
     
     # for i, estimate in enumerate(estimates):
-    for i , estimate in estimates.items():
-        errors = [np.linalg.norm(np.array(x_vals) - true_avg)**2 for x_vals in estimate]
-        plt.plot(errors, label=i)
-    plt.yscale('log')
+    error_gossip = [np.linalg.norm(estimate - true_avg)**2 for estimate in estimates_gossip]
+    error_optimized_gossip = [np.linalg.norm(estimate - true_avg)**2 for estimate in estimates_opt]
+    plt.semilogy(txcounts_nat, error_gossip, label='Randomized Gossip', color='blue')
+    plt.semilogy(txcounts_optimized, error_optimized_gossip, label='Optimized Randomized Gossip', color='orange')
+
+    # plt.yscale('log')
     # plt.xlabel('Iteration')
     plt.xlabel('Transmission Count')
     plt.ylabel('L2 norm of Error')
@@ -198,27 +240,52 @@ def plot_convergence_random_gossip(true_avg, estimates):
     plt.show()
     
 
-# Run the randomized gossip algorithm
-# estimated_vals, num_iterations = randomized_gossip(adjacency_matrix, temperature_measurements[:num_sensors])
-# estimated_vals, num_iterations = randomized_gossip(adjacency_matrix, sensor_readings)
-estimated_vals, transmission_count = randomized_gossip(adjacency_matrix, sensor_readings)
+start_time = time.time()
+estimated_vals, txcounts = randomized_gossip(adjacency_matrix, sensor_readings)
+end_time = time.time()
+
+metrics_random = convergence_summary(sensor_readings, estimated_vals, txcounts)
+
+print(f"[Random Gossip]")
+print(f"Iterations to converge: {metrics_random['iterations_to_converge']}")
+print(f"Transmissions to converge: {metrics_random['transmissions_to_converge']}")
+print(f"Final error: {metrics_random['final_error']:.2e}")
+
+print(f"Time taken for Randomized Gossip: {end_time - start_time:.2f} seconds")
 # Calculate the P matrix
+start_time = time.time()
+
 P_matrix = calculate_P_matrix(adjacency_matrix)
-# Run the optimized randomized gossip algorithm
-# estimated_vals_P_matrix, num_iterations_P_matrix = optimized_randomized_gossip(P_matrix, sensor_readings)
-estimated_vals_P_matrix, transmission_count_P_matrix = optimized_randomized_gossip(P_matrix, sensor_readings)
+estimated_vals_P_matrix, txcounts_opt = optimized_randomized_gossip(P_matrix, sensor_readings)
+
+end_time = time.time()
+print(f"Time taken for Optimized Randomized Gossip: {end_time - start_time:.2f} seconds")
+
+metrics_opt = convergence_summary(sensor_readings, estimated_vals_P_matrix, txcounts_opt)
+
+print(f"\n[Optimized Random Gossip]")
+print(f"Iterations to converge: {metrics_opt['iterations_to_converge']}")
+print(f"Transmissions to converge: {metrics_opt['transmissions_to_converge']}")
+print(f"Final error: {metrics_opt['final_error']:.2e}")
+
+# Plot the convergence of the Randomized Gossip algorithm
 
 plot_convergence_random_gossip(
-    true_avg_temp, 
-    {
-        'Randomized Gossip': estimated_vals,
-        'Optimized Randomized Gossip': estimated_vals_P_matrix
-    }
+    estimated_vals,
+    txcounts,
+    estimated_vals_P_matrix,
+    txcounts_opt,
+    true_avg_temp
 )
+
+
+
+
 # plot_convergence_random_gossip(true_avg_temp, estimated_vals)
 # plot_convergence_random_gossip(true_avg_temp, estimated_vals_P_matrix)
 
 
-
+# Run the optimized randomized gossip algorithm
+# estimated_vals_P_matrix, num_iterations_P_matrix = optimized_randomized_gossip(P_matrix, sensor_readings)
 
 
