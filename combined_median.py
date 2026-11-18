@@ -2,42 +2,6 @@ import numpy as np
 from preprocessing import *
 import matplotlib.pyplot as plt
 
-field_size = 100
-# field_resolution = (field_size, field_size)
-field_range = np.array([[0, field_size], [0, field_size]])
-# num_sensors = 10
-AGENT_COMM_RANGE = 20
- 
-# num_sensors = number_of_sensors(AGENT_COMM_RANGE, field_size)
-num_sensors = 149  # Set a fixed number of sensors for testing (look for median rule on odd/even number of sensors)
-print(f"Number of sensors: {num_sensors}")
-print("probability:", 1-1/num_sensors**2)
-
-agent_locations = np.array([0.9*np.random.uniform(field_range[0,0], field_range[0,1], num_sensors),
-                            0.9*np.random.uniform(field_range[1,0], field_range[1,1], num_sensors)])
-
-sensor_readings = np.random.uniform(10, 40, num_sensors) + np.random.normal(0, 0.1, num_sensors)  # Simulated sensor readings with noise
-
-
-print(f"Sensor readings shape: {sensor_readings}")
-# true_avg_temp = np.mean(sensor_readings)
-true_median_temp = np.median(sensor_readings)
-
-print(f"True Median temperature: {true_median_temp:.2f} °C")
-
-# avg_temperature = np.mean(temperature_measurements[0])
-# print(f"Average temperature: {avg_temperature:.2f} °C")
-
-adjacency_matrix = calculate_adjacency_matrix(agent_locations, AGENT_COMM_RANGE)
-if not is_graph_connected(adjacency_matrix):
-    print("Warning: The graph is not connected.")
-else:
-    print("The graph is connected.")
-visualize_graphs(agent_locations, adjacency_matrix)
-
-
-
-
 def pdmm_median_algorithm(adjacency_matrix, initial_vals, num_iterations = 50000, c = 1.0, tole = 1e-6):
     
     initial_vals = np.array(initial_vals, dtype=float)  # Ensure initial_vals is a float array

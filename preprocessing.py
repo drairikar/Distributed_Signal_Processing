@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import RegularGridInterpolator
@@ -62,7 +64,7 @@ def temperature_generator(field_size = 100, field_resolution = (100, 100), min_t
 
 def visualize_graphs(agent_locations, adjacency_matrix):
     num_agents = agent_locations.shape[1]
-    colors = plt.cm.get_cmap("tab10", num_agents)  # Use a colormap with N unique colors
+    colors = plt.get_cmap("tab10", num_agents)  # Use a colormap with N unique colors
 
     # field_size = temperature_generator.shape[0]
     field_size = 100
@@ -100,4 +102,10 @@ def visualize_graphs(agent_locations, adjacency_matrix):
                          'gray', linewidth=1, zorder=1)
     
     plt.axis("equal")
-    plt.show()
+    plt.title("Sensor network over the temperature field")
+    if os.environ.get("SAVE_FIGS") == "1":
+        os.makedirs("figures", exist_ok=True)
+        plt.savefig(os.path.join("figures", "network.png"), dpi=150, bbox_inches="tight")
+        plt.close()
+    else:
+        plt.show()
