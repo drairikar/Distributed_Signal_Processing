@@ -514,6 +514,6 @@ def async_pdmm_algorithm_broadcast(adjacency_matrix, initial_vals, num_iteration
 
     print("Maximum iterations reached without convergence.")
         
-    return estimated_vals, tx_counts, it, final_iter
+    return estimated_vals, tx_counts, final_iter
 
 

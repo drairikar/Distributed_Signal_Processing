@@ -22,10 +22,12 @@ def plot_l2_norm_vs_transmission_count(l2_norms, transmission_counts, labels):
     plt.grid(True)
     save_or_show('l2_vs_transmissions.png')
 
-def l2norm_vs_iterations(l2_norms, labels):
+def l2norm_vs_iterations(l2_norms, iteration_counts, labels):
     plt.figure(figsize=(10, 6))
-    for l2_norm, label in zip(l2_norms, labels):
-        plt.plot(range(len(l2_norm)), l2_norm, label=label)
+    for l2_norm, n_iter, label in zip(l2_norms, iteration_counts, labels):
+        # Some histories are subsampled (optimised gossip stores every 100th iteration),
+        # so spread each history over its actual iteration count.
+        plt.plot(np.linspace(0, n_iter, len(l2_norm)), l2_norm, label=label)
 
     plt.yscale('log')
     plt.xlabel('Iteration Count')
@@ -144,7 +146,7 @@ def main():
 
     plot_l2_norm_vs_transmission_count(l2_norms, transmission_counts, labels)
     # Plot L2 norm vs iterations
-    l2norm_vs_iterations(l2_norms, labels)
+    l2norm_vs_iterations(l2_norms, iteration_counts, labels)
     
 
 if __name__ == "__main__":
