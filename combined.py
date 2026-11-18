@@ -1,3 +1,6 @@
+import os
+import random
+
 import numpy as np
 import matplotlib.pyplot as plt
 from preprocessing import *
@@ -17,12 +20,12 @@ def plot_l2_norm_vs_transmission_count(l2_norms, transmission_counts, labels):
     plt.axhline(y=1e-6, color='red', linestyle='--', label='Tolerance Level (1e-6)')    
     plt.legend()
     plt.grid(True)
-    plt.show()
+    save_or_show('l2_vs_transmissions.png')
 
-def l2norm_vs_iterations(l2_norms, iterations, labels):
+def l2norm_vs_iterations(l2_norms, labels):
     plt.figure(figsize=(10, 6))
-    for l2_norm, iteration, label in zip(l2_norms, iterations, labels):
-        plt.plot(iteration, l2_norm, label=label)
+    for l2_norm, label in zip(l2_norms, labels):
+        plt.plot(range(len(l2_norm)), l2_norm, label=label)
 
     plt.yscale('log')
     plt.xlabel('Iteration Count')
@@ -31,10 +34,23 @@ def l2norm_vs_iterations(l2_norms, iterations, labels):
     plt.axhline(y=1e-6, color='red', linestyle='--', label='Tolerance Level (1e-6)')
     plt.legend()
     plt.grid(True)
-    plt.show()
+    save_or_show('l2_vs_iterations.png')
+
+
+def save_or_show(filename):
+    """Show the figure interactively, or save it to figures/ when SAVE_FIGS=1."""
+    if os.environ.get('SAVE_FIGS') == '1':
+        os.makedirs('figures', exist_ok=True)
+        plt.savefig(os.path.join('figures', filename), dpi=150, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
 
 
 def main():
+    seed = int(os.environ.get('SEED', 0))
+    np.random.seed(seed)
+    random.seed(seed)
     field_size = 100
     field_range = np.array([[0, field_size], [0, field_size]])
     AGENT_COMM_RANGE = 20
@@ -128,7 +144,7 @@ def main():
 
     plot_l2_norm_vs_transmission_count(l2_norms, transmission_counts, labels)
     # Plot L2 norm vs iterations
-    l2norm_vs_iterations(l2_norms, rec_estimates, labels)
+    l2norm_vs_iterations(l2_norms, labels)
     
 
 if __name__ == "__main__":
